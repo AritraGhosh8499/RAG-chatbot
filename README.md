@@ -32,6 +32,7 @@ A facts-only Retrieval-Augmented Generation (RAG) chatbot that answers questions
 | Component | Choice |
 |---|---|
 | Embedding model | `sentence-transformers/all-MiniLM-L6-v2` (HuggingFace, runs locally — no API key) |
+| Embedding runtime | ONNX Runtime by default (~235 MB RAM); PyTorch fallback (~680 MB), selected by `EMBEDDER_BACKEND` |
 | Vector DB | ChromaDB (persistent, cosine space) |
 | Chunking | Paragraph/sentence-aware, ~800 chars, ~100 char overlap |
 | Retrieval | Hybrid: dense cosine candidates re-ranked by a row-aware lexical pass |
@@ -139,22 +140,22 @@ The Space config is already in this repo — the YAML block at the top of this R
 
 **Steps**
 
-1. Go to <https://huggingface.co/new-space> → **SDK: Streamlit** → pick a name → **Create**.
+1. Go to <https://huggingface.co/new-space> → pick the **`Streamlit`** SDK → pick a name → **Create**.
 2. Set **Space visibility** to *Public* if you want a shareable link.
-3. Delete the auto-generated `app.py` and `requirements.txt` from the Space file listing — this repo supplies both.
-4. Connect the Space to GitHub and point it at this repo (or push the files manually).
+3. In the **Import from GitHub** tab, connect this repo. (That tab only renders once you are **logged in** — if you can't see it, sign in first.)
+4. Set the **App file path** to `src/app.py`.
 5. Open **Settings → Variables and secrets → New secret** → name `GROQ_API_KEY`, paste your key → **Add**.
 6. Wait for the build. The first run builds the search index, so the app shows a progress bar for a minute or two before the UI appears.
 
 No vector index needs to be committed: `ensure_index()` in `src/app.py` builds it on first run whenever `chroma_db/` is missing, which is why a fresh clone works with no extra setup step.
 
-**Why Spaces rather than Render free:** measured peak memory for this app is **680 MB** (17 MB bare Python → 194 MB importing PyTorch → 534 MB loading the embedding model → 680 MB with the index and Streamlit loaded). Render's free tier provides **512 MB**, so the container is OOM-killed and restart-loops into 502s and timeouts. Spaces' free tier provides 16 GB.
+**Spaces vs Render:** either works now. Spaces free gives 16 GB so memory is a non-issue; Render free gives 512 MB, which only fits with `EMBEDDER_BACKEND=onnx` (~235 MB). Render is the shorter path because the service already exists.
 
 ### Deploy to Render
 
 Deploy settings live in [`render.yaml`](render.yaml).
 
-> ⚠️ **Render's free tier cannot run this app** — it needs ~680 MB and Render free provides 512 MB. The fields below are correct, but they need a machine with enough RAM (Render's paid tiers). Deploy to Spaces instead if you want a free public link.
+> ⚠️ **`EMBEDDER_BACKEND=onnx` is what makes the free plan work.** The original PyTorch backend needs ~680 MB against Render's 512 MB limit, so the container was OOM-killed and restart-looped into 502s and timeouts. The ONNX backend needs ~235 MB. Do not set it to `torch` on a free plan.
 
 **Option A — Blueprint:** Render dashboard → **New → Blueprint** → select this repo → Render reads `render.yaml` → it asks for `GROQ_API_KEY` → done.
 
@@ -166,15 +167,14 @@ Deploy settings live in [`render.yaml`](render.yaml).
 | Build Command | `pip install -r requirements.txt && python -m src.ingestion.run_ingest --step embed --reset` |
 | Start Command | `streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT` |
 | Health Check Path | `/_stcore/health` |
-| Environment | `GROQ_API_KEY` = your key, `GROQ_MODEL` = `openai/gpt-oss-120b` |
+| Environment | `GROQ_API_KEY` = your key, `GROQ_MODEL` = `openai/gpt-oss-120b`, `EMBEDDER_BACKEND` = `onnx` |
 
-Why the build command is not just `pip install`: `chroma_db/` is git-ignored, so a fresh deploy has **no vector index** and every answer would fail. The build step fetches the corpus pages and builds the index once.
+Why the build command is not just `pip install`: `chroma_db/` is git-ignored, so a fresh deploy has **no vector index** and every answer would fail. The build step fetches the corpus pages and builds the index once. `ensure_index()` in `src/app.py` also self-heals if the index is missing at runtime.
 
 `--server.address 0.0.0.0` is required (without it the app listens only to localhost and Render cannot reach it), and `$PORT` must be used because Render picks the port at deploy time.
 
 **Known deployment notes:**
-- The build downloads ~1.5 GB of dependencies (PyTorch, via `sentence-transformers`). The first build takes several minutes; later ones reuse the cache.
-- The build fetches the 6 corpus pages from Groww and AMFI. If those hosts block Render's servers the build fails — `ensure_index()` retries on every start, so the Space recovers once the fetch succeeds.
+- The first build takes several minutes because it downloads PyTorch for the fallback path; later builds reuse the cache.
 - The free plan sleeps after ~15 minutes idle, so the first request after a pause takes ~30s to wake.
 
 **Terminal only**
@@ -195,7 +195,9 @@ Why the build command is not just `pip install`: `chroma_db/` is git-ignored, so
 | `python -m src.ingestion.run_ingest --step embed --reset` | Full pipeline, rebuild the index |
 | `python -m src.ingestion.run_ingest --step query --query "expense ratio of HDFC Mid Cap Fund"` | Inspect ranked chunks (uses the same retriever as the bot) |
 | `python -m src.guardrails` | Run the advice-refusal test cases |
+| `python -m src.ingestion.test_embedder_backends` | Prove the ONNX and PyTorch backends produce identical vectors |
 | `python -m src.retrieval.test_retrieve` | Inspect top-k chunks and the built prompt |
+| `python -m src.retrieval.test_coverage` | 15-query retrieval coverage sweep |
 | `python -m src.chat` | Terminal chat session (`/quit` to exit) |
 | `python -m src.make_sample_qa` | Regenerate `sample_qa.md` |
 

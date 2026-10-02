@@ -55,7 +55,7 @@ The system is a classic two-stage RAG pipeline: an **offline ingestion pipeline*
 |---|---|---|
 | 1. Loading | `loader.py` | HTTP fetch of the 6 corpus URLs; strip boilerplate (nav, footer, scripts); keep headings + paragraphs. HTML **tables are rendered as labelled key-value rows** (`Fund Name: HDFC Mid Cap Fund | Expense Ratio: 0.76 | ...`) instead of a flat cell dump, so each fact keeps its column meaning. |
 | 2. Chunking | `chunker.py` | Semantic/paragraph-aware chunking — split on headings and paragraphs, merge small segments, cap chunk size (e.g., ~500–800 chars) with small overlap. Strategy chosen based on page structure. |
-| 3. Embedding | `embedder.py` | `sentence-transformers/all-MiniLM-L6-v2` — same model must be used at retrieval time. |
+| 3. Embedding | `embedder.py` | `sentence-transformers/all-MiniLM-L6-v2` — same model must be used at retrieval time. Runs on ONNX Runtime by default, with a PyTorch fallback. |
 | 4. Vector store | `vector_store.py` | ChromaDB persistent collection. Each record stores: embedding vector, chunk text, and metadata `{source_url, scheme_name, chunk_id}`. |
 
 Output: a local ChromaDB directory (e.g., `./chroma_db`) + a `sources.csv/md` manifest.

@@ -1,11 +1,11 @@
 # Render deployment blueprint.
 # Docs: https://render.com/docs/blueprint-spec
 #
-# ⚠️  Render's FREE plan cannot run this app. Measured peak memory is ~680 MB
-#     (17 MB bare Python -> 194 MB importing PyTorch -> 534 MB loading
-#     MiniLM -> 680 MB with ChromaDB + Streamlit loaded), while the free tier
-#     provides 512 MB. The container is OOM-killed and restart-loops into 502s.
-#     Use a paid plan, or deploy to Hugging Face Spaces (16 GB free) instead.
+# ⚠️  Memory note: this app's peak RAM depends on the embedding backend.
+#     EMBEDDER_BACKEND=onnx (the default)  -> ~235 MB, fits the free 512 MB plan.
+#     EMBEDDER_BACKEND=torch              -> ~680 MB, OOM-killed on free tier.
+#     PyTorch costs ~194 MB on import and another ~340 MB for the model weights.
+#     Do not set it to torch on a free plan.
 #
 # Why the build command is not just "pip install":
 #   chroma_db/ is git-ignored, so a fresh deploy has no vector index and every
@@ -35,3 +35,5 @@ services:
         sync: false # set in the Render dashboard, never committed
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      - key: EMBEDDER_BACKEND
+        value: onnx # light backend; torch needs ~680 MB and will not fit

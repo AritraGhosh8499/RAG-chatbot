@@ -1,5 +1,18 @@
-chromadb
+# Embeddings run locally (no API key). Default backend is ONNX Runtime, which
+# loads the same all-MiniLM-L6-v2 weights without PyTorch and keeps peak
+# memory at ~235 MB instead of ~680 MB. That is what lets the app run on a
+# 512 MB free-tier container.
+onnxruntime
+tokenizers
+huggingface_hub
+
+# PyTorch fallback. Embeddings are identical (cosine 1.000000), but importing
+# torch costs ~194 MB and holding the weights costs ~340 MB more. Kept so the
+# app still runs if onnxruntime cannot be installed; the backend is selected
+# with EMBEDDER_BACKEND and falls back automatically.
 sentence-transformers
+
+chromadb
 beautifulsoup4
 requests
 streamlit
