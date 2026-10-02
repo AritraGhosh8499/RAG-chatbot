@@ -140,10 +140,13 @@ def _cap_sentences(text: str, max_sentences: int = 3) -> str:
 
 
 # Some models echo their prompt's context markers back into the answer
-# ("...is 0.76% [Context 1]"). The citation is added by us, so these are noise.
+# ("...is 0.76% [Context 1]" or "...0.76% 【2】"). We attach the citation
+# ourselves, so any of these are noise to be removed before display.
 _CONTEXT_MARKER = re.compile(
     r"\s*(?:\[\s*context\s*\d*\s*\]|【\s*context\s*\d*\s*】|\(\s*context\s*\d*\s*\)|"
-    r"\*\*context\s*\d*\*\*|context\s*\d+\s*[:.-])",
+    r"\*\*context\s*\d*\*\*|context\s*\d+\s*[:.-]|"
+    # Bare numeric markers: 【2】, [2], 〈2〉, {2}
+    r"[【\[\(〈{]\s*\d{1,2}\s*[】\]\)〉}])",
     re.IGNORECASE,
 )
 
