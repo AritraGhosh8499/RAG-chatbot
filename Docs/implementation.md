@@ -234,10 +234,49 @@ Dense candidates are pulled from ChromaDB, then re-scored:
 
 ---
 
+## Phase 10 — Deployment (added after the Render outage)
+
+The app deployed successfully but the site was unreachable: the build finished, then every request returned a 502 or timed out. Retrying the build did not help.
+
+**Diagnosis.** Measured RSS stage by stage with `psutil` while a real question was answered:
+
+| Stage | RSS |
+|---|---|
+| Bare Python | 17 MB |
+| `import torch` | 194 MB |
+| Embedding model loaded | 534 MB |
+| ChromaDB index loaded | 672 MB |
+| Streamlit imported | **680 MB** |
+| Render free tier limit | **512 MB** |
+
+Over budget by 168 MB, so Linux OOM-killed the container on every start. It was briefly reachable only in the window between booting and being killed, which is why it looked intermittent rather than broken.
+
+**Root cause.** Not the model. `all-MiniLM-L6-v2` is 90 MB of weights; PyTorch costs 194 MB just to import and another 340 MB to hold them, because it reserves large arenas and does not return them.
+
+**Fix — same weights, lighter runtime.** `src/ingestion/embedder.py` now runs the exported graph (`onnx/model.onnx`, 86 MB) through ONNX Runtime with Rust `tokenizers`, doing mean pooling over the attention mask and L2 normalisation to match `1_Pooling/config.json`.
+
+| Stage | ONNX |
+|---|---|
+| Bare Python | 17 MB |
+| Model loaded | 178 MB |
+| After retrieval | 218 MB |
+| After answering a question | **235 MB** |
+
+`EMBEDDER_BACKEND` selects `onnx` (default) or `torch`; if `onnxruntime` cannot load, the module falls back to `sentence-transformers` automatically, so no environment ends up without embeddings.
+
+**Verification.** `src/ingestion/test_embedder_backends.py` embeds five probes through both backends in separate subprocesses and compares them: **cosine similarity 1.000000** on every probe. Full suite re-run on the ONNX-built index — guardrails 11/11, coverage sweep 13/15 (the same two pre-existing misses), Groq answers unchanged. Live deployment verified with 12/12 successful requests, median 0.38s, against 5/6 timeouts at 90s beforehand.
+
+**Also in this phase**
+- `ensure_index()` in `src/app.py` builds the vector index whenever `chroma_db/` is missing, wrapped in `st.cache_resource`. `chroma_db/` is git-ignored, so previously every host needed a separate ingestion build step; now a fresh clone or cloud deploy is self-sufficient. Verified from a genuinely empty index: 84 chunks from 6 pages in 8.6s, second call a no-op.
+- `render.yaml` makes build command, start command, health check path and required env vars declarative, so a mistyped module name cannot break a build again.
+- `.streamlit/config.toml` tracked for theming, with `secrets.toml` still ignored.
+
+---
+
 ## Phase Order & Dependencies
 
 ```
-Phase 0 → 1 → 2 → 3 → 5 → 6 → 7 → 8 → 9
+Phase 0 → 1 → 2 → 3 → 5 → 6 → 7 → 8 → 9 → 10
                  └→ 4 (guardrails) can be done any time before 6
 ```
 
@@ -249,3 +288,8 @@ Phase 0 → 1 → 2 → 3 → 5 → 6 → 7 → 8 → 9
 - [ ] "Last updated from sources:" appears on every answer.
 - [ ] UI shows the facts-only disclaimer.
 - [ ] No PII fields or storage.
+- [x] Public demo link reachable on a free-tier host (<https://rag-chatbot-yr9e.onrender.com>).
+- [x] Peak RSS 235 MB, inside the 512 MB free-tier budget.
+- [x] No API keys committed; `.env` and `secrets.toml` git-ignored.
+
+**Known retrieval gaps** (facts exist in the corpus but rank outside the top 4, so the bot declines rather than guessing): "fund size / AUM of HDFC Mid Cap Fund", "who manages HDFC Mid Cap Fund".
