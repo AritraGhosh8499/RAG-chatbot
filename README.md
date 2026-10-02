@@ -46,6 +46,7 @@ A facts-only Retrieval-Augmented Generation (RAG) chatbot that answers questions
 │   └── app.py                Streamlit UI
 ├── chroma_db/                persisted vector store (generated)
 ├── notebooks/                optional demo notebook
+├── render.yaml               Render deploy settings (build/start/env)
 ├── sample_qa.md              sample Q&A output
 ├── requirements.txt
 └── .env.example
@@ -112,6 +113,31 @@ If you get `ModuleNotFoundError: No module named 'src'`, run it via Python inste
 ```bash
 .venv\Scripts\python.exe -m streamlit run src/app.py
 ```
+
+### Deploy to Render
+
+The deploy settings live in [`render.yaml`](render.yaml), so there is nothing to type by hand.
+
+**Option A — Blueprint (recommended):** Render dashboard → **New → Blueprint** → select this repo → Render reads `render.yaml` → it asks for your `GROQ_API_KEY` → done.
+
+**Option B — existing web service:** paste these three fields by hand.
+
+| Field | Value |
+|---|---|
+| Root Directory | *(leave blank)* |
+| Build Command | `pip install -r requirements.txt && python -m src.ingestion.run_ingest --step embed --reset` |
+| Start Command | `streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT` |
+| Health Check Path | `/_stcore/health` |
+| Environment | `GROQ_API_KEY` = your key, `GROQ_MODEL` = `openai/gpt-oss-120b` |
+
+Why the build command is not just `pip install`: `chroma_db/` is git-ignored, so a fresh deploy has **no vector index** and every answer would fail. The build step fetches the corpus pages and builds the index once.
+
+`--server.address 0.0.0.0` is required (without it the app listens only to localhost and Render cannot reach it), and `$PORT` must be used because Render picks the port at deploy time.
+
+**Known deployment notes:**
+- The build downloads ~1.5 GB of dependencies (PyTorch, via `sentence-transformers`). The first build takes several minutes; later ones reuse the cache.
+- The build fetches the 6 corpus pages from Groww and AMFI. If those hosts block Render's servers the build fails — the local index in `chroma_db/` is the fallback, but it is not committed.
+- The free plan sleeps after ~15 minutes idle, so the first request after a pause takes ~30s to wake.
 
 **Terminal only**
 

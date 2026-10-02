@@ -1,0 +1,30 @@
+# Render deployment blueprint.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Why the build command is not just "pip install":
+#   chroma_db/ is git-ignored, so a fresh deploy has no vector index and every
+#   answer would fail. The build step fetches the corpus pages and builds the
+#   index once, so the running app starts with something to search.
+#
+# Apply with: Render dashboard -> New -> Blueprint -> point at this repo.
+# Render will ask for GROQ_API_KEY when the service is created (sync: false).
+
+services:
+  - type: web
+    name: rag-chatbot
+    runtime: python
+    plan: free
+
+    buildCommand: pip install -r requirements.txt && python -m src.ingestion.run_ingest --step embed --reset
+    startCommand: streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT
+
+    healthCheckPath: /_stcore/health
+
+    # Streamlit ships its own static assets; only proxy the app itself.
+    autoDeploy: true
+
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false # set in the Render dashboard, never committed
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
