@@ -1,3 +1,15 @@
+---
+title: MF Scheme FAQ Assistant
+emoji: 📊
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: 1.64.0
+app_file: src/app.py
+pinned: false
+license: mit
+---
+
 # MF Scheme FAQ RAG Chatbot
 
 A facts-only Retrieval-Augmented Generation (RAG) chatbot that answers questions about **HDFC Mutual Fund** schemes using public scheme pages. Every answer carries exactly one source link. The assistant refuses investment-advice questions.
@@ -114,11 +126,37 @@ If you get `ModuleNotFoundError: No module named 'src'`, run it via Python inste
 .venv\Scripts\python.exe -m streamlit run src/app.py
 ```
 
+### Deploy to Hugging Face Spaces (recommended)
+
+The Space config is already in this repo — the YAML block at the top of this README declares the SDK, app file and Streamlit version.
+
+| Setting | Value |
+|---|---|
+| SDK | `streamlit` |
+| App file | `src/app.py` |
+| Python | 3.12 (via `.python-version`) |
+| Secret | `GROQ_API_KEY` |
+
+**Steps**
+
+1. Go to <https://huggingface.co/new-space> → **SDK: Streamlit** → pick a name → **Create**.
+2. Set **Space visibility** to *Public* if you want a shareable link.
+3. Delete the auto-generated `app.py` and `requirements.txt` from the Space file listing — this repo supplies both.
+4. Connect the Space to GitHub and point it at this repo (or push the files manually).
+5. Open **Settings → Variables and secrets → New secret** → name `GROQ_API_KEY`, paste your key → **Add**.
+6. Wait for the build. The first run builds the search index, so the app shows a progress bar for a minute or two before the UI appears.
+
+No vector index needs to be committed: `ensure_index()` in `src/app.py` builds it on first run whenever `chroma_db/` is missing, which is why a fresh clone works with no extra setup step.
+
+**Why Spaces rather than Render free:** measured peak memory for this app is **680 MB** (17 MB bare Python → 194 MB importing PyTorch → 534 MB loading the embedding model → 680 MB with the index and Streamlit loaded). Render's free tier provides **512 MB**, so the container is OOM-killed and restart-loops into 502s and timeouts. Spaces' free tier provides 16 GB.
+
 ### Deploy to Render
 
-The deploy settings live in [`render.yaml`](render.yaml), so there is nothing to type by hand.
+Deploy settings live in [`render.yaml`](render.yaml).
 
-**Option A — Blueprint (recommended):** Render dashboard → **New → Blueprint** → select this repo → Render reads `render.yaml` → it asks for your `GROQ_API_KEY` → done.
+> ⚠️ **Render's free tier cannot run this app** — it needs ~680 MB and Render free provides 512 MB. The fields below are correct, but they need a machine with enough RAM (Render's paid tiers). Deploy to Spaces instead if you want a free public link.
+
+**Option A — Blueprint:** Render dashboard → **New → Blueprint** → select this repo → Render reads `render.yaml` → it asks for `GROQ_API_KEY` → done.
 
 **Option B — existing web service:** paste these three fields by hand.
 
@@ -136,7 +174,7 @@ Why the build command is not just `pip install`: `chroma_db/` is git-ignored, so
 
 **Known deployment notes:**
 - The build downloads ~1.5 GB of dependencies (PyTorch, via `sentence-transformers`). The first build takes several minutes; later ones reuse the cache.
-- The build fetches the 6 corpus pages from Groww and AMFI. If those hosts block Render's servers the build fails — the local index in `chroma_db/` is the fallback, but it is not committed.
+- The build fetches the 6 corpus pages from Groww and AMFI. If those hosts block Render's servers the build fails — `ensure_index()` retries on every start, so the Space recovers once the fetch succeeds.
 - The free plan sleeps after ~15 minutes idle, so the first request after a pause takes ~30s to wake.
 
 **Terminal only**

@@ -4,4 +4,12 @@ venv/
 __pycache__/
 *.pyc
 chroma_db/
-.streamlit/
+
+# Local scratch: streamlit/CLI output captured during debugging.
+st_out.txt
+st_err.txt
+*.log
+
+# Streamlit's local secrets file holds the Groq key, so it must never be
+# committed. The theme config alongside it is safe and is tracked.
+.streamlit/secrets.toml

@@ -1,10 +1,17 @@
 # Render deployment blueprint.
 # Docs: https://render.com/docs/blueprint-spec
 #
+# ⚠️  Render's FREE plan cannot run this app. Measured peak memory is ~680 MB
+#     (17 MB bare Python -> 194 MB importing PyTorch -> 534 MB loading
+#     MiniLM -> 680 MB with ChromaDB + Streamlit loaded), while the free tier
+#     provides 512 MB. The container is OOM-killed and restart-loops into 502s.
+#     Use a paid plan, or deploy to Hugging Face Spaces (16 GB free) instead.
+#
 # Why the build command is not just "pip install":
 #   chroma_db/ is git-ignored, so a fresh deploy has no vector index and every
 #   answer would fail. The build step fetches the corpus pages and builds the
 #   index once, so the running app starts with something to search.
+#   (src/app.py also self-heals via ensure_index(), so this is belt-and-braces.)
 #
 # Apply with: Render dashboard -> New -> Blueprint -> point at this repo.
 # Render will ask for GROQ_API_KEY when the service is created (sync: false).

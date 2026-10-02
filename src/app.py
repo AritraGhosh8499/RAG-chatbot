@@ -22,6 +22,32 @@ from src.orchestrator import ask  # noqa: E402
 
 st.set_page_config(page_title="MF Scheme FAQ Assistant", page_icon="📊", layout="centered")
 
+
+@st.cache_resource(show_spinner="Building the search index — first run only, about 1-3 minutes...")
+def ensure_index() -> int:
+    """Build the vector index if it is missing.
+
+    `chroma_db/` is git-ignored, so a fresh clone - or a fresh cloud deploy -
+    arrives with nothing to search. Building it here means the app works on any
+    host without a separate build step. Cached, so it runs once per machine.
+    """
+    from src.ingestion.chunker import chunk_pages
+    from src.ingestion.embedder import embed_texts
+    from src.ingestion.loader import CORPUS, load_all
+    from src.ingestion.vector_store import count, upsert_chunks
+
+    if count() > 0:
+        return count()
+
+    pages = load_all(CORPUS)
+    chunks = chunk_pages(pages)
+    embeddings = embed_texts([c["text"] for c in chunks])
+    upsert_chunks(chunks, embeddings, reset=True)
+    return count()
+
+
+INDEX_SIZE = ensure_index()
+
 DISCLAIMER = "Facts-only. No investment advice."
 
 EXAMPLE_QUESTIONS = [
@@ -31,9 +57,11 @@ EXAMPLE_QUESTIONS = [
 ]
 
 st.title("📊 Mutual Fund Scheme FAQ Assistant")
-st.caption("HDFC Mutual Funds — answers drawn from public scheme pages only.")
+st.caption(
+    f"HDFC Mutual Funds — answers drawn from {INDEX_SIZE} passages across "
+    "6 public scheme pages."
+)
 st.warning(DISCLAIMER, icon="⚠️")
-
 st.subheader("Try one of these:")
 cols = st.columns(len(EXAMPLE_QUESTIONS))
 for col, question in zip(cols, EXAMPLE_QUESTIONS):

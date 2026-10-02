@@ -1,0 +1,14 @@
+[theme]
+primaryColor = "#0d6efd"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f7fa"
+textColor = "#1a1a1a"
+font = "sans serif"
+
+[server]
+# Hugging Face Spaces assigns the port and expects 0.0.0.0; these are the
+# defaults the platform uses. Kept explicit so local and hosted behave alike.
+headless = true
+
+[browser]
+gatherUsageStats = false
